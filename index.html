@@ -98,6 +98,21 @@
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
   function blobUrl(type) { return URL.createObjectURL(new Blob([vcf], { type: type })); }
+  // Android Contacts insert intent (ContactsContract.Intents.Insert extras). If nothing can handle it,
+  // Chrome opens browser_fallback_url instead, which this page reports as "fallback=F".
+  function androidInsertIntent(c) {
+    var extras = [
+      ['name', c.n], ['phone', c.m], ['secondary_phone', c.w], ['email', c.e],
+      ['company', c.o], ['job_title', c.t], ['postal', (c.a || []).filter(Boolean).join(', ')]
+    ];
+    var parts = ['action=android.intent.action.INSERT', 'type=vnd.android.cursor.dir/raw_contact'];
+    extras.forEach(function (x) { if (x[1]) { parts.push('S.' + x[0] + '=' + encodeURIComponent(x[1])); } });
+    if (c.m) { parts.push('i.phone_type=2'); }
+    if (c.w) { parts.push('i.secondary_phone_type=3'); }
+    if (c.e) { parts.push('i.email_type=2'); }
+    parts.push('S.browser_fallback_url=' + encodeURIComponent(location.origin + location.pathname + '?fallback=F'));
+    return 'intent:#Intent;' + parts.join(';') + ';end';
+  }
   var dataUrl = 'data:text/vcard;charset=utf-8,' + encodeURIComponent(vcf);
 
   var TESTS = [
@@ -105,7 +120,8 @@
     ['B', 'Download contact (data link)', 'Downloads the .vcf built from a data link.', function () { clickLink(dataUrl, true); }],
     ['C', 'Open contact (blob)', 'Navigates to a contact file built in the browser.', function () { location.href = blobUrl('text/vcard'); }],
     ['D', 'Download contact (blob)', 'Downloads a contact file built in the browser.', function () { clickLink(blobUrl('text/vcard'), true); }],
-    ['E', 'Open hosted test.vcf (control)', 'Opens a real .vcf file served by GitHub Pages. Shows what a server-hosted file does.', function () { location.href = 'test.vcf'; }]
+    ['E', 'Open hosted test.vcf (control)', 'Opens a real .vcf file served by GitHub Pages. Shows what a server-hosted file does.', function () { location.href = 'test.vcf'; }],
+    ['F', 'Android: open Create contact form', 'Android only. Asks Android to open its own Create contact form with the details filled in (no download).', function () { location.href = androidInsertIntent(contact); }]
   ];
   var OUTCOMES = ['— what happened? —', 'Contact form opened (Create/Add contact)', 'Downloaded, then opened contact after a tap', 'Downloaded only (no contact screen)', 'Showed raw text', 'Nothing happened', 'Error message'];
   var results = {}, events = [];
@@ -134,7 +150,7 @@
     return [
       'UA: ' + navigator.userAgent,
       'standalone/inApp hints: referrer=' + (document.referrer || 'none') + ' | ' + location.href.length + ' chars in URL',
-      'link data: ' + decodeNote,
+      'link data: ' + decodeNote + (/[?&]fallback=F/.test(location.search) ? ' | RETURNED VIA F FALLBACK (intent not handled)' : ''),
       'test link length: ' + testLink.length
     ].join('\n');
   }
