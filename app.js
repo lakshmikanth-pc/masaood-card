@@ -37,7 +37,8 @@
   row('Email', contact.email, 'mailto:' + encodeURIComponent(contact.email).replace('%40', '@'));
 
   var apple = SC.isApple(navigator.userAgent, navigator.maxTouchPoints || 0);
-  el('hint').hidden = apple;
+  // The download hint only applies to Android; Apple opens the contact form directly and desktop has no Open step.
+  el('hint').hidden = !/Android/i.test(navigator.userAgent);
   el('card').hidden = false;
   el('actions').hidden = false;
 

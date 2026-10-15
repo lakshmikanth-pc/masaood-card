@@ -23,11 +23,35 @@
     return decodeURIComponent(escape(atob(b64)));
   }
 
+  /** Keeps only well-formed UTF-16: a surrogate is kept only as part of a high+low pair. */
+  function dropLoneSurrogates(value) {
+    var out = '';
+    for (var i = 0; i < value.length; i++) {
+      var c = value.charCodeAt(i);
+      if (c >= 0xD800 && c <= 0xDBFF) {
+        var next = i + 1 < value.length ? value.charCodeAt(i + 1) : 0;
+        if (next >= 0xDC00 && next <= 0xDFFF) {
+          out += value.charAt(i) + value.charAt(i + 1);
+          i++;
+        }
+      } else if (c < 0xDC00 || c > 0xDFFF) {
+        out += value.charAt(i);
+      }
+    }
+    return out;
+  }
+
+  /** Strips ASCII + C1 controls, line/paragraph separators and bidi controls; drops lone surrogates; caps at MAX_FIELD. */
   function clean(value) {
     if (typeof value !== 'string') {
       return '';
     }
-    return value.replace(/[\u0000-\u001F\u007F]/g, '').trim().substring(0, MAX_FIELD);
+    var s = dropLoneSurrogates(value.replace(/[\u0000-\u001F\u007F-\u009F\u2028\u2029\u202A-\u202E\u2066-\u2069]/g, ''));
+    s = s.substring(0, MAX_FIELD);
+    if (/[\uD800-\uDBFF]$/.test(s)) {
+      s = s.substring(0, s.length - 1);
+    }
+    return s.trim();
   }
 
   function phone(value) {
