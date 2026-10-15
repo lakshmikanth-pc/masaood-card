@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Save Contact Test</title>
+<style>
+  :root { --navy: #0B2545; --orange: #BF5219; --bg: #F3F5F8; --ink: #111827; --muted: #4B5563; --line: #D1D5DB; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 4px 0 12px; }
+  .card { background: var(--navy); color: #fff; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+  .card b { font-size: 18px; display: block; }
+  .card div { opacity: .9; font-size: 14px; }
+  .test { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .test h2 { font-size: 15px; margin: 0 0 4px; }
+  .test p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+  button, select { font: inherit; }
+  .go { width: 100%; padding: 12px; border: 0; border-radius: 10px; background: var(--orange); color: #fff; font-weight: 600; }
+  .ghost { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); font-weight: 600; }
+  select { width: 100%; margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #111827; color: #E5E7EB; padding: 12px; border-radius: 12px; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Save contact test (temporary)</h1>
+  <div class="card" id="card"></div>
+
+  <div id="tests"></div>
+
+  <div class="row">
+    <button class="ghost" id="copyLink" type="button">Copy test link</button>
+    <button class="ghost" id="copyResults" type="button">Copy results</button>
+  </div>
+  <pre id="env"></pre>
+</main>
+<script>
+(function () {
+  'use strict';
+
+  // Fictional test contact. The real page will read the sender's details from the link after '#'.
+  var SAMPLE = {
+    v: 1, g: 'Test', s: 'Contact', n: 'Test Contact', t: 'Developer', o: 'Al Masaood Group',
+    m: '+971500000000', w: '+97122017600', e: 'test.contact@example.com',
+    a: ['P.O. Box 322', 'Abu Dhabi', 'United Arab Emirates'], u: 'https://www.masaood.com'
+  };
+
+  function b64urlEncode(text) {
+    var bytes = new TextEncoder().encode(text), bin = '';
+    for (var i = 0; i < bytes.length; i++) { bin += String.fromCharCode(bytes[i]); }
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function b64urlDecode(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) { s += '='; }
+    var bin = atob(s), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) { bytes[i] = bin.charCodeAt(i); }
+    return new TextDecoder().decode(bytes);
+  }
+  function esc(v) {
+    return String(v || '').replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;').trim();
+  }
+  function buildVCard(c) {
+    var L = ['BEGIN:VCARD', 'VERSION:3.0', 'N:' + esc(c.s) + ';' + esc(c.g) + ';;;', 'FN:' + esc(c.n), 'ORG:' + esc(c.o)];
+    if (c.t) { L.push('TITLE:' + esc(c.t)); }
+    if (c.m) { L.push('TEL;TYPE=CELL:' + c.m); }
+    if (c.w) { L.push('TEL;TYPE=WORK:' + c.w); }
+    if (c.e) { L.push('EMAIL;TYPE=WORK:' + esc(c.e)); }
+    if (c.a) { L.push('ADR;TYPE=WORK:;;' + esc(c.a[0]) + ';' + esc(c.a[1]) + ';;;' + esc(c.a[2])); }
+    if (c.u) { L.push('URL:' + c.u); }
+    L.push('END:VCARD');
+    return L.join('\r\n') + '\r\n';
+  }
+
+  var decodeNote = 'no #data in link, using built-in sample';
+  var contact = SAMPLE;
+  if (location.hash.length > 1) {
+    try { contact = JSON.parse(b64urlDecode(location.hash.slice(1))); decodeNote = 'decoded from link OK'; }
+    catch (e) { decodeNote = 'DECODE FAILED: ' + e.message; }
+  }
+  var vcf = buildVCard(contact);
+  var fileName = (contact.n || 'contact').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') + '.vcf';
+
+  document.getElementById('card').innerHTML = '';
+  [['b', contact.n], ['div', (contact.t ? contact.t + ' · ' : '') + contact.o], ['div', contact.m], ['div', contact.e]].forEach(function (p) {
+    var el = document.createElement(p[0]); el.textContent = p[1] || ''; document.getElementById('card').appendChild(el);
+  });
+
+  function clickLink(href, download) {
+    var a = document.createElement('a');
+    a.href = href;
+    if (download) { a.download = fileName; }
+    a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+  function blobUrl(type) { return URL.createObjectURL(new Blob([vcf], { type: type })); }
+  var dataUrl = 'data:text/vcard;charset=utf-8,' + encodeURIComponent(vcf);
+
+  var TESTS = [
+    ['A', 'Open contact (data link)', 'Navigates straight to the contact data.', function () { location.href = dataUrl; }],
+    ['B', 'Download contact (data link)', 'Downloads the .vcf built from a data link.', function () { clickLink(dataUrl, true); }],
+    ['C', 'Open contact (blob)', 'Navigates to a contact file built in the browser.', function () { location.href = blobUrl('text/vcard'); }],
+    ['D', 'Download contact (blob)', 'Downloads a contact file built in the browser.', function () { clickLink(blobUrl('text/vcard'), true); }],
+    ['E', 'Open hosted test.vcf (control)', 'Opens a real .vcf file served by GitHub Pages. Shows what a server-hosted file does.', function () { location.href = 'test.vcf'; }]
+  ];
+  var OUTCOMES = ['— what happened? —', 'Contact form opened (Create/Add contact)', 'Downloaded, then opened contact after a tap', 'Downloaded only (no contact screen)', 'Showed raw text', 'Nothing happened', 'Error message'];
+  var results = {}, events = [];
+
+  document.addEventListener('visibilitychange', function () { events.push(new Date().toISOString().substr(11, 8) + ' page ' + document.visibilityState); });
+
+  TESTS.forEach(function (t) {
+    var box = document.createElement('section'); box.className = 'test';
+    box.innerHTML = '<h2></h2><p></p>';
+    box.querySelector('h2').textContent = t[0] + ' · ' + t[1];
+    box.querySelector('p').textContent = t[2];
+    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'go'; btn.textContent = 'Try ' + t[0];
+    btn.onclick = function () {
+      events.push(new Date().toISOString().substr(11, 8) + ' tapped ' + t[0]);
+      try { t[3](); } catch (e) { events.push(t[0] + ' threw ' + e.name + ': ' + e.message); }
+    };
+    var sel = document.createElement('select');
+    OUTCOMES.forEach(function (o, i) { var opt = document.createElement('option'); opt.value = i ? o : ''; opt.textContent = o; sel.appendChild(opt); });
+    sel.onchange = function () { results[t[0]] = sel.value; };
+    box.appendChild(btn); box.appendChild(sel);
+    document.getElementById('tests').appendChild(box);
+  });
+
+  var testLink = location.origin + location.pathname + '#' + b64urlEncode(JSON.stringify(SAMPLE));
+  function envText() {
+    return [
+      'UA: ' + navigator.userAgent,
+      'standalone/inApp hints: referrer=' + (document.referrer || 'none') + ' | ' + location.href.length + ' chars in URL',
+      'link data: ' + decodeNote,
+      'test link length: ' + testLink.length
+    ].join('\n');
+  }
+  document.getElementById('env').textContent = envText();
+
+  function copy(text, label) {
+    var done = function () { alert(label + ' copied'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { prompt('Copy this:', text); });
+    } else { prompt('Copy this:', text); }
+  }
+  document.getElementById('copyLink').onclick = function () { copy(testLink, 'Test link'); };
+  document.getElementById('copyResults').onclick = function () {
+    var lines = [envText(), '---'];
+    TESTS.forEach(function (t) { lines.push(t[0] + ' ' + t[1] + ': ' + (results[t[0]] || 'not tried')); });
+    lines.push('---');
+    copy(lines.concat(events).join('\n'), 'Results');
+  };
+})();
+</script>
+</body>
+</html>
