@@ -17,8 +17,6 @@
     list.appendChild(p); list.appendChild(b);
   });
   document.getElementById('all').addEventListener('click', function () {
-    copy(ITEMS.map(function (it) { return it.id + ' ' + it.url; }).join('
-
-'));
+    copy(ITEMS.map(function (it) { return it.id + ' ' + it.url; }).join(String.fromCharCode(10, 10)));
   });
 })();
