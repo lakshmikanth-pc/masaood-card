@@ -4,7 +4,7 @@
   var SC = window.SaveContact;
   function el(id) { return document.getElementById(id); }
 
-  var contact = SC.decode(window.location.hash);
+  var contact = SC.decodeLink(window.location.search, window.location.hash);
   if (!contact) {
     el('invalid').hidden = false;
     return;

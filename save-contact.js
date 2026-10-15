@@ -1,6 +1,8 @@
 /* Save-contact page logic. ES5, no dependencies. Loaded by index.html (global SaveContact)
    and by Jest (module.exports), so the tested file is the published file.
-   Link format v1 is produced by src/webparts/eBusinessCard/services/contactLink.ts. */
+   Links are produced by src/webparts/eBusinessCard/services/contactLink.ts.
+   v2 (current): ?c=<base64url(compact fields joined by U+001F)> in the query string, because WhatsApp
+   never links a #fragment. v1 (JSON after #) is still decoded so links sent during testing keep working. */
 (function (root, factory) {
   var api = factory();
   if (typeof module === 'object' && module.exports) {
@@ -12,6 +14,10 @@
   'use strict';
 
   var MAX_HASH = 4000;
+  var SEP = '\u001F';
+  // Must equal DEFAULT_BRANDING.websiteUrl / .vcard in the web part (a unit test enforces it).
+  var DEFAULT_WEBSITE = 'https://www.masaood.com';
+  var DEFAULT_ADDRESS = ['P.O. Box 322', 'Abu Dhabi', 'United Arab Emirates'];
   var MAX_FIELD = 200;
   var LOGOS = { 'default': 'amllc', amllc: 'amllc', ama: 'ama', atc: 'atc', ammts: 'ammts', amb: 'amb', arb: 'arb', tba: 'tba' };
 
@@ -69,7 +75,7 @@
     return /^https:\/\/[^\s]+$/i.test(u) ? u : '';
   }
 
-  /** Clean contact from location.hash, or null when the link is unusable. */
+  /** v1: clean contact from location.hash, or null when the link is unusable. */
   function decode(hash) {
     var raw = String(hash || '').replace(/^#/, '');
     if (!raw || raw.length > MAX_HASH || !/^[A-Za-z0-9_-]+$/.test(raw)) {
@@ -89,9 +95,8 @@
       return null;
     }
     var address = Object.prototype.toString.call(data.a) === '[object Array]' ? data.a : [];
-    var key = clean(data.k).toLowerCase();
     return {
-      key: /^[a-z0-9_-]{1,40}$/.test(key) && LOGOS.hasOwnProperty(key) ? key : 'default',
+      key: companyKey(data.k),
       name: name,
       given: clean(data.g),
       surname: clean(data.s),
@@ -103,6 +108,96 @@
       address: [clean(address[0]), clean(address[1]), clean(address[2])],
       url: httpsUrl(data.u)
     };
+  }
+
+  /** Company key: lower-case, allowlisted, else the group logo. */
+  function companyKey(value) {
+    var key = clean(value).toLowerCase();
+    return /^[a-z0-9_-]{1,40}$/.test(key) && LOGOS.hasOwnProperty(key) ? key : 'default';
+  }
+
+  /** v2 phone: empty, "+..." as is, "=digits" (no prefix), otherwise a UAE number without +971. */
+  function expandPhone(value) {
+    var p = clean(value);
+    if (!p) {
+      return '';
+    }
+    if (p.charAt(0) === '+') {
+      return phone(p);
+    }
+    if (p.charAt(0) === '=') {
+      return phone(p.substring(1));
+    }
+    return phone('+971' + p);
+  }
+
+  function expandEmail(value) {
+    var e = clean(value);
+    if (e.charAt(e.length - 1) === '@') {
+      e += 'masaood.com';
+    }
+    return email(e);
+  }
+
+  function expandWebsite(value) {
+    var u = clean(value);
+    if (!u) {
+      return DEFAULT_WEBSITE;
+    }
+    // The web part strips a leading https://. A value that still shows a scheme (://, or a script-like
+    // one) is kept so httpsUrl() rejects it; anything else, including host:port, gets https:// back.
+    return httpsUrl(/:\/\//.test(u) || /^(javascript|data|vbscript|http):/i.test(u) ? u : 'https://' + u);
+  }
+
+  /** Clean contact from the ?c= value (v2 compact fields), or null when the link is unusable. */
+  function decodeCompact(raw) {
+    raw = String(raw || '');
+    if (!raw || raw.length > MAX_HASH || !/^[A-Za-z0-9_-]+$/.test(raw)) {
+      return null;
+    }
+    var text;
+    try {
+      text = fromBase64Url(raw);
+    } catch (e) {
+      return null;
+    }
+    // Split before clean(): clean() strips control characters, including the separator.
+    var f = text.split(SEP);
+    // The last field must be the "." end marker; a link cut by a messenger lacks it.
+    if (f.length < 4 || f[f.length - 1] !== '.') {
+      return null;
+    }
+    f.pop();
+    if (f[0] !== '2') {
+      return null;
+    }
+    var name = clean(f[2]);
+    if (!name) {
+      return null;
+    }
+    var street = clean(f[11]);
+    var locality = clean(f[12]);
+    var country = clean(f[13]);
+    var noAddress = !street && !locality && !country;
+    return {
+      key: companyKey(f[1]),
+      name: name,
+      given: clean(f[3]),
+      surname: clean(f[4]),
+      title: clean(f[5]),
+      org: clean(f[9]),
+      mobile: expandPhone(f[6]),
+      work: expandPhone(f[7]),
+      email: expandEmail(f[8]),
+      address: noAddress ? DEFAULT_ADDRESS.slice() : [street, locality, country],
+      url: expandWebsite(f[10])
+    };
+  }
+
+  /** v2 from ?c= in location.search; with no c parameter, v1 from location.hash. */
+  function decodeLink(search, hash) {
+    var m = /[?&]c=([A-Za-z0-9_-]{1,4000})(?:&|$)/.exec(String(search || ''));
+    return m ? decodeCompact(m[1]) : decode(hash);
   }
 
   /** RFC 6350 escaping — same as escapeVCard() in the web part. */
@@ -161,5 +256,9 @@
     return 'logos/' + (LOGOS.hasOwnProperty(key) ? LOGOS[key] : LOGOS['default']) + '.png';
   }
 
-  return { decode: decode, buildVCard: buildVCard, isApple: isApple, fileName: fileName, logoFor: logoFor };
+  return {
+    decode: decode, decodeCompact: decodeCompact, decodeLink: decodeLink,
+    DEFAULT_WEBSITE: DEFAULT_WEBSITE, DEFAULT_ADDRESS: DEFAULT_ADDRESS,
+    buildVCard: buildVCard, isApple: isApple, fileName: fileName, logoFor: logoFor
+  };
 }));
