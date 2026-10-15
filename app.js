@@ -4,7 +4,8 @@
   var SC = window.SaveContact;
   function el(id) { return document.getElementById(id); }
 
-  var contact = SC.decodeLink(window.location.search, window.location.hash);
+  // save-contact.js failed to load (blocked, cut off): say so instead of leaving a blank page.
+  var contact = SC ? SC.decodeLink(window.location.search, window.location.hash) : null;
   if (!contact) {
     el('invalid').hidden = false;
     return;
@@ -31,8 +32,9 @@
     li.appendChild(link);
     el('details').appendChild(li);
   }
-  row('Mobile', contact.mobile, 'tel:' + contact.mobile);
-  row('Office', contact.work, 'tel:' + contact.work);
+  // Shown like the card (+971 50 123 4567); tel: links and the vCard keep the dialable value.
+  row('Mobile', SC.formatPhone(contact.mobile), 'tel:' + contact.mobile);
+  row('Office', SC.formatPhone(contact.work), 'tel:' + contact.work);
   // Percent-encode the address so ? & # = cannot start mailto: headers (cc/bcc/subject/body); keep the @ readable.
   row('Email', contact.email, 'mailto:' + encodeURIComponent(contact.email).replace('%40', '@'));
 

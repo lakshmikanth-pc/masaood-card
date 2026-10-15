@@ -144,9 +144,43 @@
     if (!u) {
       return DEFAULT_WEBSITE;
     }
-    // The web part strips a leading https://. A value that still shows a scheme (://, or a script-like
-    // one) is kept so httpsUrl() rejects it; anything else, including host:port, gets https:// back.
-    return httpsUrl(/:\/\//.test(u) || /^(javascript|data|vbscript|http):/i.test(u) ? u : 'https://' + u);
+    // The web part strips a leading https://. A value that still starts with a scheme (scheme://, or a
+    // script-like one) is kept so httpsUrl() rejects it; anything else, including host:port and a query
+    // that holds "://", gets https:// back.
+    var hasScheme = /^[A-Za-z][A-Za-z0-9+.\-]*:\/\//.test(u) || /^(javascript|data|vbscript|http):/i.test(u);
+    return httpsUrl(hasScheme ? u : 'https://' + u);
+  }
+
+  /** UAE national significant number (8 or 9 digits), or null. Same rules as uaeLocal() in services/phone.ts. */
+  function uaeLocal(raw) {
+    var trimmed = String(raw || '').trim();
+    var d = trimmed.replace(/[^\d]/g, '');
+    if (d.indexOf('00971') === 0) {
+      d = d.substring(5);
+    } else if (d.indexOf('971') === 0 && (trimmed.charAt(0) === '+' || d.length >= 11)) {
+      d = d.substring(3);
+    } else if (!(d.charAt(0) === '0' && (d.length === 10 || d.length === 9))) {
+      return null;
+    }
+    if (d.charAt(0) === '0') {
+      d = d.substring(1);
+    }
+    return d.length === 8 || d.length === 9 ? d : null;
+  }
+
+  /** Display form, same as formatPhone() in services/phone.ts: "+971501234567" -> "+971 50 123 4567". */
+  function formatPhone(raw) {
+    if (!raw) {
+      return '';
+    }
+    var local = uaeLocal(raw);
+    if (local === null) {
+      return String(raw).trim();
+    }
+    if (local.length === 9) {
+      return '+971 ' + local.substring(0, 2) + ' ' + local.substring(2, 5) + ' ' + local.substring(5);
+    }
+    return '+971 ' + local.charAt(0) + ' ' + local.substring(1, 4) + ' ' + local.substring(4);
   }
 
   /** Clean contact from the ?c= value (v2 compact fields), or null when the link is unusable. */
@@ -259,6 +293,6 @@
   return {
     decode: decode, decodeCompact: decodeCompact, decodeLink: decodeLink,
     DEFAULT_WEBSITE: DEFAULT_WEBSITE, DEFAULT_ADDRESS: DEFAULT_ADDRESS,
-    buildVCard: buildVCard, isApple: isApple, fileName: fileName, logoFor: logoFor
+    buildVCard: buildVCard, isApple: isApple, fileName: fileName, logoFor: logoFor, formatPhone: formatPhone
   };
 }));
